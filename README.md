@@ -23,13 +23,6 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-In questo workspace le dipendenze sono state installate anche nella cartella locale `.deps`. Puoi avviare l'app con il Python bundled così:
-
-```powershell
-$env:PYTHONPATH = (Resolve-Path .deps).Path
-& 'C:\Users\marco\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe' -m streamlit run app.py --global.developmentMode=false --server.headless=true --browser.gatherUsageStats=false --server.port 8501 --server.address localhost
-```
-
 ## Configurazione
 
 Variabili ambiente supportate:
