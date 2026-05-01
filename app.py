@@ -1,5 +1,6 @@
 import base64
 import os
+import re
 import time
 from dataclasses import dataclass
 from io import BytesIO
@@ -205,16 +206,80 @@ def save_markdown_file(markdown: str, output_dir: str, filename: str) -> Path:
     return target_path
 
 
+def count_unreadable_placeholders(results: list[dict]) -> int:
+    return sum(
+        len(re.findall(r"\[illeggibile\]", result["markdown"], flags=re.IGNORECASE))
+        for result in results
+    )
+
+
+def build_ocr_summary(pages: list[PageImage], results: list[dict], errors: dict[int, str]) -> dict:
+    processed_pages = [
+        f"{result['source_name']} - pagina {result['page_number']}"
+        for result in results
+    ]
+    error_items = [
+        {
+            "page": f"{pages[index].source_name} - pagina {pages[index].page_number}",
+            "error": error,
+        }
+        for index, error in sorted(errors.items())
+        if 0 <= index < len(pages)
+    ]
+    return {
+        "total_pages": len(pages),
+        "processed_count": len(results),
+        "processed_pages": processed_pages,
+        "error_count": len(error_items),
+        "errors": error_items,
+        "unreadable_count": count_unreadable_placeholders(results),
+    }
+
+
 def reset_state() -> None:
     st.session_state.pages = []
     st.session_state.results = []
     st.session_state.errors = {}
+    st.session_state.ocr_summary = None
+    st.session_state.show_ocr_summary = False
 
 
 st.set_page_config(page_title="OCR to Markdown", layout="wide", initial_sidebar_state="collapsed")
 
+
+@st.dialog("Esito elaborazione OCR")
+def show_ocr_summary_dialog() -> None:
+    summary = st.session_state.ocr_summary
+    if not summary:
+        st.info("Nessun riepilogo disponibile.")
+        return
+
+    st.write(f"Pagine selezionate: **{summary['total_pages']}**")
+    st.write(f"Pagine elaborate correttamente: **{summary['processed_count']}**")
+    st.write(f"Errori: **{summary['error_count']}**")
+    st.write(f"Elementi `[illeggibile]`: **{summary['unreadable_count']}**")
+
+    if summary["processed_pages"]:
+        with st.expander("Pagine elaborate", expanded=True):
+            for page_label in summary["processed_pages"]:
+                st.write(f"- {page_label}")
+
+    if summary["errors"]:
+        with st.expander("Errori", expanded=True):
+            for item in summary["errors"]:
+                st.error(f"{item['page']}: {item['error']}")
+
+    if st.button("Chiudi", width="stretch"):
+        st.session_state.show_ocr_summary = False
+        st.rerun()
+
+
 if "pages" not in st.session_state:
     reset_state()
+if "ocr_summary" not in st.session_state:
+    st.session_state.ocr_summary = None
+if "show_ocr_summary" not in st.session_state:
+    st.session_state.show_ocr_summary = False
 
 st.title("OCR to Markdown")
 
@@ -302,10 +367,19 @@ if run_ocr:
         progress.progress(index / total)
 
     status.success("OCR completato.")
+    st.session_state.ocr_summary = build_ocr_summary(
+        st.session_state.pages,
+        st.session_state.results,
+        st.session_state.errors,
+    )
+    st.session_state.show_ocr_summary = True
 
 pages = st.session_state.pages
 results = st.session_state.results
 errors = st.session_state.errors
+
+if st.session_state.show_ocr_summary:
+    show_ocr_summary_dialog()
 
 if pages:
     st.divider()
