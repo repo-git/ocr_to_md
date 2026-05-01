@@ -10,6 +10,7 @@ L'app converte ogni pagina in immagine, la invia al modello OCR e mostra una vis
 
 - Upload di PDF e immagini multiple.
 - Conversione dei PDF pagina per pagina in immagini.
+- Selezione opzionale delle pagine PDF da convertire.
 - OCR locale tramite endpoint Ollama `/api/generate`.
 - Prompt orientato a Markdown strutturato.
 - Estrazione di titoli, paragrafi, liste e tabelle Markdown.
@@ -78,11 +79,12 @@ MARKDOWN_OUTPUT_DIR=outputs
 ## Flusso di lavoro
 
 1. Carica uno o piu PDF o immagini.
-2. Prepara le pagine: i PDF vengono renderizzati pagina per pagina.
-3. Avvia OCR: ogni pagina viene inviata a GLM-OCR tramite Ollama.
-4. Confronta originale e Markdown nella vista affiancata.
-5. Correggi il Markdown se serve.
-6. Salva il risultato su disco o scaricalo dal browser.
+2. Indica eventualmente le pagine PDF da convertire, per esempio `1-3, 5, 8-10`.
+3. Prepara le pagine: i PDF vengono renderizzati pagina per pagina.
+4. Avvia OCR: ogni pagina viene inviata a GLM-OCR tramite Ollama.
+5. Confronta originale e Markdown nella vista affiancata.
+6. Correggi il Markdown se serve.
+7. Salva il risultato su disco o scaricalo dal browser.
 
 ## Note
 

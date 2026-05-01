@@ -55,19 +55,60 @@ def load_image_file(file) -> Image.Image:
     return image.convert("RGB")
 
 
-def pdf_to_images(file, dpi: int) -> list[Image.Image]:
+def parse_page_ranges(page_range: str, total_pages: int) -> list[int]:
+    cleaned = page_range.strip()
+    if not cleaned:
+        return list(range(1, total_pages + 1))
+
+    selected_pages: set[int] = set()
+    for raw_part in cleaned.split(","):
+        part = raw_part.strip()
+        if not part:
+            continue
+
+        if "-" in part:
+            bounds = [value.strip() for value in part.split("-", 1)]
+            if len(bounds) != 2 or not bounds[0].isdigit() or not bounds[1].isdigit():
+                raise ValueError(f"Range pagine non valido: {part}")
+            start, end = int(bounds[0]), int(bounds[1])
+            if start > end:
+                raise ValueError(f"Range pagine invertito: {part}")
+            selected_pages.update(range(start, end + 1))
+        else:
+            if not part.isdigit():
+                raise ValueError(f"Pagina non valida: {part}")
+            selected_pages.add(int(part))
+
+    if not selected_pages:
+        raise ValueError("Nessuna pagina selezionata.")
+
+    out_of_bounds = [page for page in sorted(selected_pages) if page < 1 or page > total_pages]
+    if out_of_bounds:
+        raise ValueError(
+            f"Pagine fuori range: {', '.join(str(page) for page in out_of_bounds)}. "
+            f"Il documento ha {total_pages} pagine."
+        )
+
+    return sorted(selected_pages)
+
+
+def pdf_to_images(file, dpi: int, page_range: str) -> list[tuple[int, Image.Image]]:
     pdf_bytes = file.getvalue()
     zoom = dpi / 72
     matrix = fitz.Matrix(zoom, zoom)
-    images: list[Image.Image] = []
+    images: list[tuple[int, Image.Image]] = []
 
     try:
         fitz.TOOLS.reset_mupdf_warnings()
         with fitz.open(stream=pdf_bytes, filetype="pdf") as document:
-            for page in document:
+            selected_pages = parse_page_ranges(page_range, document.page_count)
+            for page_number in selected_pages:
+                page = document[page_number - 1]
                 pixmap = page.get_pixmap(matrix=matrix, alpha=False)
                 image = Image.open(BytesIO(pixmap.tobytes("png"))).convert("RGB")
-                images.append(image)
+                images.append((page_number, image))
+    except ValueError as exc:
+        raise RuntimeError(str(exc)) from exc
     except fitz.FileDataError as exc:
         raise RuntimeError("PDF non leggibile o danneggiato.") from exc
     except fitz.FileNotFoundError as exc:
@@ -80,7 +121,7 @@ def pdf_to_images(file, dpi: int) -> list[Image.Image]:
     return images
 
 
-def uploaded_files_to_pages(files: Iterable, dpi: int) -> list[PageImage]:
+def uploaded_files_to_pages(files: Iterable, dpi: int, page_range: str) -> list[PageImage]:
     pages: list[PageImage] = []
     page_id = 0
 
@@ -91,12 +132,12 @@ def uploaded_files_to_pages(files: Iterable, dpi: int) -> list[PageImage]:
 
         if content_type == "application/pdf" or extension == ".pdf":
             try:
-                pdf_images = pdf_to_images(uploaded_file, dpi)
+                pdf_images = pdf_to_images(uploaded_file, dpi, page_range)
             except RuntimeError as exc:
                 raise RuntimeError(f"{name}: {exc}") from exc
 
-            for index, image in enumerate(pdf_images, start=1):
-                pages.append(PageImage(page_id, index, name, image))
+            for page_number, image in pdf_images:
+                pages.append(PageImage(page_id, page_number, name, image))
                 page_id += 1
         else:
             pages.append(PageImage(page_id, 1, name, load_image_file(uploaded_file)))
@@ -182,6 +223,12 @@ with st.sidebar:
         base_url = st.text_input("Ollama base URL", value=OLLAMA_BASE_URL)
         model = st.text_input("Modello", value=OLLAMA_MODEL)
         dpi = st.slider("Risoluzione PDF", min_value=120, max_value=300, value=200, step=20)
+        page_range = st.text_input(
+            "Pagine PDF da convertire",
+            value="",
+            placeholder="Tutte, oppure es. 1-3, 5, 8-10",
+            help="Lascia vuoto per convertire tutte le pagine. Il filtro vale per i PDF; le immagini caricate singolarmente vengono incluse sempre.",
+        )
         timeout = st.number_input("Timeout per pagina (secondi)", min_value=30, max_value=900, value=DEFAULT_TIMEOUT)
         retries = st.number_input("Retry per pagina", min_value=0, max_value=5, value=DEFAULT_RETRIES)
         output_dir = st.text_input("Directory output Markdown", value=DEFAULT_OUTPUT_DIR)
@@ -205,7 +252,7 @@ if prepare:
     if uploaded_files:
         with st.spinner("Conversione documenti in immagini..."):
             try:
-                st.session_state.pages = uploaded_files_to_pages(uploaded_files, dpi)
+                st.session_state.pages = uploaded_files_to_pages(uploaded_files, dpi, page_range)
                 st.success(f"Pronte {len(st.session_state.pages)} pagine.")
             except RuntimeError as exc:
                 st.error(str(exc))
@@ -217,7 +264,7 @@ if run_ocr:
         if uploaded_files:
             with st.spinner("Conversione documenti in immagini..."):
                 try:
-                    st.session_state.pages = uploaded_files_to_pages(uploaded_files, dpi)
+                    st.session_state.pages = uploaded_files_to_pages(uploaded_files, dpi, page_range)
                 except RuntimeError as exc:
                     st.error(str(exc))
                     st.stop()
