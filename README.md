@@ -1,6 +1,6 @@
 # OCR to Markdown
 
-**Versione:** `0.2`
+**Versione:** `0.5`
 
 Webapp Streamlit per trasformare PDF scansionati, PDF rumorosi e immagini in Markdown pulito usando **GLM-OCR** esposto tramite **Ollama locale**.
 
@@ -53,6 +53,15 @@ Poi apri l'indirizzo mostrato da Streamlit, di solito:
 ```text
 http://localhost:8501
 ```
+
+## Struttura del progetto
+
+| File | Ruolo |
+| --- | --- |
+| `app.py` | Interfaccia Streamlit, stato UI, confronto pagine e controlli export |
+| `ocr_core.py` | Conversione PDF/immagini, parsing range pagine, chiamate Ollama, riepiloghi e salvataggio Markdown |
+| `.env.example` | Esempio di configurazione ambiente |
+| `requirements.txt` | Dipendenze Python |
 
 ## Configurazione
 
