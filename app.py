@@ -41,6 +41,8 @@ def reset_state() -> None:
     st.session_state.ocr_summary = None
     st.session_state.show_ocr_summary = False
     st.session_state.output_filename = None
+    st.session_state.saved_path = None
+    st.session_state.save_error = None
 
 
 def initialize_state() -> None:
@@ -52,6 +54,10 @@ def initialize_state() -> None:
         st.session_state.show_ocr_summary = False
     if "output_filename" not in st.session_state:
         st.session_state.output_filename = None
+    if "saved_path" not in st.session_state:
+        st.session_state.saved_path = None
+    if "save_error" not in st.session_state:
+        st.session_state.save_error = None
 
 
 def prepare_uploaded_pages(uploaded_files, dpi: int, page_range: str) -> bool:
@@ -69,6 +75,29 @@ def prepare_uploaded_pages(uploaded_files, dpi: int, page_range: str) -> bool:
 
     st.success(f"Pronte {len(st.session_state.pages)} pagine.")
     return True
+
+
+def get_output_filename(results: list[dict]) -> str:
+    if st.session_state.output_filename:
+        return st.session_state.output_filename
+    if results:
+        return build_markdown_filename(results[0]["source_name"])
+    return "ocr_result.md"
+
+
+def save_results_automatically() -> None:
+    results = st.session_state.results
+    if not results:
+        return
+
+    combined = build_combined_markdown(results)
+    output_filename = get_output_filename(results)
+    try:
+        st.session_state.saved_path = save_markdown_file(combined, str(OUTPUT_DIR), output_filename)
+        st.session_state.save_error = None
+    except OSError as exc:
+        st.session_state.saved_path = None
+        st.session_state.save_error = str(exc)
 
 
 def run_ocr_for_pages(prompt: str, model: str, base_url: str, timeout: int, retries: int) -> None:
@@ -102,6 +131,7 @@ def run_ocr_for_pages(prompt: str, model: str, base_url: str, timeout: int, retr
         progress.progress(index / total)
 
     status.success("OCR completato.")
+    save_results_automatically()
     st.session_state.ocr_summary = build_ocr_summary(
         st.session_state.pages,
         st.session_state.results,
@@ -203,7 +233,21 @@ def render_page_comparison() -> None:
         f"{index + 1}. {page.source_name} - pagina {page.page_number}"
         for index, page in enumerate(pages)
     ]
-    selected = st.selectbox("Pagina da confrontare", options=range(len(pages)), format_func=lambda i: page_labels[i])
+    selector_col, download_col = st.columns([3, 1])
+    with selector_col:
+        selected = st.selectbox("Pagina da confrontare", options=range(len(pages)), format_func=lambda i: page_labels[i])
+    with download_col:
+        if results:
+            output_filename = get_output_filename(results)
+            st.download_button(
+                "Scarica Markdown",
+                data=build_combined_markdown(results).encode("utf-8"),
+                file_name=Path(output_filename).name or "ocr_result.md",
+                mime="text/markdown",
+                width="stretch",
+            )
+    if st.session_state.save_error:
+        st.error(f"Impossibile salvare automaticamente il Markdown: {st.session_state.save_error}")
     page = pages[selected]
 
     result_by_page_id = {
@@ -227,36 +271,11 @@ def render_page_comparison() -> None:
                 if result["page_id"] == page.page_id:
                     result["markdown"] = edited
                     break
+            save_results_automatically()
             with st.expander("Anteprima renderizzata", expanded=False):
                 st.markdown(edited)
         else:
             st.info("Esegui l'OCR per vedere il Markdown di questa pagina.")
-
-
-def render_export_controls() -> None:
-    results = st.session_state.results
-    if not results:
-        return
-
-    st.divider()
-    combined = build_combined_markdown(results)
-    output_filename = st.session_state.output_filename or build_markdown_filename(results[0]["source_name"])
-    save_col, download_col = st.columns([1, 1])
-    with save_col:
-        if st.button("Salva Markdown su disco", type="secondary", width="stretch"):
-            try:
-                saved_path = save_markdown_file(combined, str(OUTPUT_DIR), output_filename)
-                st.success(f"Markdown salvato in: {saved_path}")
-            except OSError as exc:
-                st.error(f"Impossibile salvare il Markdown: {exc}")
-    with download_col:
-        st.download_button(
-            "Scarica Markdown completo",
-            data=combined.encode("utf-8"),
-            file_name=Path(output_filename).name or "ocr_result.md",
-            mime="text/markdown",
-            width="stretch",
-        )
 
 
 def main() -> None:
@@ -276,7 +295,6 @@ def main() -> None:
         show_ocr_summary_dialog()
 
     render_page_comparison()
-    render_export_controls()
 
 
 if __name__ == "__main__":

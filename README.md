@@ -18,7 +18,7 @@ L'app converte ogni pagina in immagine, la invia al modello OCR e mostra una vis
 - Gestione di timeout, retry ed errori per pagina.
 - Confronto affiancato tra originale e risultato OCR.
 - Editing manuale del Markdown generato.
-- Salvataggio del Markdown nella cartella `out_md` o download dal browser.
+- Salvataggio automatico del Markdown nella cartella `out_md` e download dal browser.
 
 ## Requisiti
 
@@ -91,9 +91,9 @@ OCR_RETRIES=2
 4. Avvia OCR: ogni pagina viene inviata a GLM-OCR tramite Ollama.
 5. Confronta originale e Markdown nella vista affiancata.
 6. Correggi il Markdown se serve.
-7. Salva il risultato su disco nella cartella `out_md` o scaricalo dal browser.
+7. Scarica il risultato dal browser se ti serve una copia manuale.
 
-Il file Markdown salvato usa lo stesso nome del file di input con estensione `.md`.
+Il file Markdown viene salvato automaticamente nella cartella `out_md` e usa lo stesso nome del file di input con estensione `.md`.
 Per conversioni parziali viene aggiunto il suffisso `_p` seguito dal range pagine, per esempio `documento_p1-3_5.md`.
 
 ## Note
