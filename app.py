@@ -5,6 +5,7 @@ import streamlit as st
 
 from ocr_core import (
     build_combined_markdown,
+    build_markdown_filename,
     build_ocr_summary,
     call_ollama_ocr,
     save_markdown_file,
@@ -16,7 +17,7 @@ OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip(
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "glm-ocr")
 DEFAULT_TIMEOUT = int(os.getenv("OCR_TIMEOUT_SECONDS", "180"))
 DEFAULT_RETRIES = int(os.getenv("OCR_RETRIES", "2"))
-DEFAULT_OUTPUT_DIR = os.getenv("MARKDOWN_OUTPUT_DIR", "outputs")
+OUTPUT_DIR = Path(__file__).resolve().parent / "out_md"
 
 OCR_PROMPT = """Trascrivi questa pagina in Markdown pulito.
 
@@ -39,6 +40,7 @@ def reset_state() -> None:
     st.session_state.errors = {}
     st.session_state.ocr_summary = None
     st.session_state.show_ocr_summary = False
+    st.session_state.output_filename = None
 
 
 def initialize_state() -> None:
@@ -48,6 +50,8 @@ def initialize_state() -> None:
         st.session_state.ocr_summary = None
     if "show_ocr_summary" not in st.session_state:
         st.session_state.show_ocr_summary = False
+    if "output_filename" not in st.session_state:
+        st.session_state.output_filename = None
 
 
 def prepare_uploaded_pages(uploaded_files, dpi: int, page_range: str) -> bool:
@@ -58,6 +62,7 @@ def prepare_uploaded_pages(uploaded_files, dpi: int, page_range: str) -> bool:
     with st.spinner("Conversione documenti in immagini..."):
         try:
             st.session_state.pages = uploaded_files_to_pages(uploaded_files, dpi, page_range)
+            st.session_state.output_filename = build_markdown_filename(uploaded_files[0].name, page_range)
         except RuntimeError as exc:
             st.error(str(exc))
             return False
@@ -128,8 +133,6 @@ def render_sidebar() -> dict:
                     value=DEFAULT_TIMEOUT,
                 ),
                 "retries": st.number_input("Retry per pagina", min_value=0, max_value=5, value=DEFAULT_RETRIES),
-                "output_dir": st.text_input("Directory output Markdown", value=DEFAULT_OUTPUT_DIR),
-                "output_filename": st.text_input("Nome file Markdown", value="ocr_result.md"),
                 "prompt": st.text_area("Prompt OCR", value=OCR_PROMPT, height=260),
             }
 
@@ -230,18 +233,19 @@ def render_page_comparison() -> None:
             st.info("Esegui l'OCR per vedere il Markdown di questa pagina.")
 
 
-def render_export_controls(output_dir: str, output_filename: str) -> None:
+def render_export_controls() -> None:
     results = st.session_state.results
     if not results:
         return
 
     st.divider()
     combined = build_combined_markdown(results)
+    output_filename = st.session_state.output_filename or build_markdown_filename(results[0]["source_name"])
     save_col, download_col = st.columns([1, 1])
     with save_col:
         if st.button("Salva Markdown su disco", type="secondary", width="stretch"):
             try:
-                saved_path = save_markdown_file(combined, output_dir, output_filename)
+                saved_path = save_markdown_file(combined, str(OUTPUT_DIR), output_filename)
                 st.success(f"Markdown salvato in: {saved_path}")
             except OSError as exc:
                 st.error(f"Impossibile salvare il Markdown: {exc}")
@@ -272,7 +276,7 @@ def main() -> None:
         show_ocr_summary_dialog()
 
     render_page_comparison()
-    render_export_controls(config["output_dir"], config["output_filename"])
+    render_export_controls()
 
 
 if __name__ == "__main__":

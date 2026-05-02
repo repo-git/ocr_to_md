@@ -176,6 +176,21 @@ def build_combined_markdown(results: list[dict]) -> str:
     return "\n\n---\n\n".join(chunks).strip()
 
 
+def build_markdown_filename(input_filename: str, page_range: str = "") -> str:
+    stem = Path(input_filename).stem or "ocr_result"
+    clean_stem = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", stem).strip(" .") or "ocr_result"
+    filename = clean_stem
+
+    clean_range = page_range.strip()
+    if clean_range:
+        range_suffix = re.sub(r"\s+", "", clean_range)
+        range_suffix = re.sub(r'[<>:"/\\|?*\x00-\x1f,]+', "_", range_suffix).strip("_")
+        if range_suffix:
+            filename = f"{filename}_p{range_suffix}"
+
+    return f"{filename}.md"
+
+
 def save_markdown_file(markdown: str, output_dir: str, filename: str) -> Path:
     clean_filename = Path(filename).name or "ocr_result.md"
     if not clean_filename.lower().endswith(".md"):
