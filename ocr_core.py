@@ -1,4 +1,6 @@
 import base64
+import html
+from html.parser import HTMLParser
 import re
 import time
 from dataclasses import dataclass
@@ -15,12 +17,78 @@ fitz.TOOLS.mupdf_display_errors(False)
 fitz.TOOLS.mupdf_display_warnings(False)
 
 
+PROMPT_ECHO_PATTERNS = [
+    "mantieni la struttura del documento",
+    "estrai testo",
+    "converti le tabelle",
+    "non usare html",
+    "descrivi sinteticamente le figure",
+    "non inventare contenuto",
+    "usa il placeholder",
+    "restituisci solo markdown",
+]
+
+
 @dataclass
 class PageImage:
     page_id: int
     page_number: int
     source_name: str
     image: Image.Image
+
+
+class HtmlTableParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.rows: list[list[str]] = []
+        self.current_row: list[str] | None = None
+        self.current_cell: list[str] | None = None
+        self.cell_tag_stack: list[str] = []
+        self.in_li = False
+
+    def handle_starttag(self, tag: str, attrs) -> None:
+        tag = tag.lower()
+        if tag == "tr":
+            self.close_current_cell()
+            self.current_row = []
+        elif tag in {"td", "th"} and self.current_row is not None:
+            self.close_current_cell()
+            self.current_cell = []
+            self.cell_tag_stack.append(tag)
+        elif tag == "br" and self.current_cell is not None:
+            self.current_cell.append("\n")
+        elif tag == "li" and self.current_row is not None:
+            if self.current_cell is None:
+                self.current_cell = []
+            if self.current_cell and not self.current_cell[-1].endswith(("\n", " ")):
+                self.current_cell.append("\n")
+            self.current_cell.append("- ")
+            self.in_li = True
+
+    def handle_endtag(self, tag: str) -> None:
+        tag = tag.lower()
+        if tag in {"td", "th"}:
+            self.close_current_cell()
+        elif tag == "tr" and self.current_row is not None:
+            self.close_current_cell()
+            if self.current_row:
+                self.rows.append(self.current_row)
+            self.current_row = None
+        elif tag == "li" and self.current_cell is not None:
+            self.current_cell.append("\n")
+            self.in_li = False
+
+    def handle_data(self, data: str) -> None:
+        if self.current_cell is not None:
+            self.current_cell.append(data)
+
+    def close_current_cell(self) -> None:
+        if self.current_row is not None and self.current_cell is not None:
+            text = normalize_table_cell("".join(self.current_cell))
+            self.current_row.append(text)
+            self.current_cell = None
+            if self.cell_tag_stack:
+                self.cell_tag_stack.pop()
 
 
 def image_to_png_bytes(image: Image.Image) -> bytes:
@@ -31,6 +99,63 @@ def image_to_png_bytes(image: Image.Image) -> bytes:
 
 def image_to_base64(image: Image.Image) -> str:
     return base64.b64encode(image_to_png_bytes(image)).decode("ascii")
+
+
+def normalize_table_cell(text: str) -> str:
+    text = html.unescape(text)
+    text = re.sub(r"\r\n?", "\n", text)
+    text = re.sub(r"[ \t\f\v]+", " ", text)
+    text = re.sub(r" *\n *", "<br>", text.strip())
+    return text.replace("|", r"\|")
+
+
+def rows_to_markdown_table(rows: list[list[str]]) -> str:
+    if not rows:
+        return ""
+
+    column_count = max(len(row) for row in rows)
+    normalized_rows = [
+        row + [""] * (column_count - len(row))
+        for row in rows
+    ]
+
+    header = normalized_rows[0]
+    body = normalized_rows[1:] or [[""] * column_count]
+    separator = ["---"] * column_count
+    lines = [
+        "| " + " | ".join(header) + " |",
+        "| " + " | ".join(separator) + " |",
+    ]
+    lines.extend("| " + " | ".join(row) + " |" for row in body)
+    return "\n".join(lines)
+
+
+def convert_html_table_to_markdown(table_html: str) -> str:
+    parser = HtmlTableParser()
+    parser.feed(table_html)
+    parser.close()
+    markdown_table = rows_to_markdown_table(parser.rows)
+    return markdown_table or table_html
+
+
+def convert_html_tables_to_markdown(markdown: str) -> str:
+    return re.sub(
+        r"<table\b[^>]*>.*?</table>",
+        lambda match: convert_html_table_to_markdown(match.group(0)),
+        markdown,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+
+
+def normalize_ocr_markdown(markdown: str) -> str:
+    return convert_html_tables_to_markdown(markdown).strip()
+
+
+def looks_like_prompt_echo(markdown: str) -> bool:
+    normalized = re.sub(r"\s+", " ", markdown.lower())
+    matches = sum(1 for pattern in PROMPT_ECHO_PATTERNS if pattern in normalized)
+    repeated_prompt_terms = normalized.count("struttura del documento") >= 3
+    return matches >= 2 or repeated_prompt_terms
 
 
 def load_image_file(file) -> Image.Image:
@@ -157,6 +282,9 @@ def call_ollama_ocr(
             markdown = data.get("response", "").strip()
             if not markdown:
                 raise RuntimeError("Ollama ha risposto senza contenuto OCR.")
+            markdown = normalize_ocr_markdown(markdown)
+            if looks_like_prompt_echo(markdown):
+                raise RuntimeError("Il modello ha restituito le istruzioni del prompt invece del contenuto della pagina.")
             return markdown
         except (requests.RequestException, ValueError, RuntimeError) as exc:
             last_error = exc
@@ -212,7 +340,7 @@ def count_unreadable_placeholders(results: list[dict]) -> int:
 
 def build_ocr_summary(pages: list[PageImage], results: list[dict], errors: dict[int, str]) -> dict:
     processed_pages = [
-        f"{result['source_name']} - pagina {result['page_number']}"
+        f"Pagina {result['page_number']}"
         for result in results
     ]
     error_items = [

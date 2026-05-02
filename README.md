@@ -19,6 +19,7 @@ L'app converte ogni pagina in immagine, la invia al modello OCR e mostra una vis
 - Confronto affiancato tra originale e risultato OCR.
 - Editing manuale del Markdown generato.
 - Salvataggio automatico del Markdown nella cartella `out_md` e download dal browser.
+- Normalizzazione automatica delle tabelle HTML restituite dal modello in tabelle Markdown.
 
 ## Requisiti
 

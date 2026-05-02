@@ -25,6 +25,7 @@ Regole obbligatorie:
 - mantieni la struttura del documento;
 - estrai testo, titoli, paragrafi e liste;
 - converti le tabelle in tabelle Markdown;
+- non usare HTML: non restituire tag <table>, <tr>, <td>, <th>, <ul>, <ol> o <li>;
 - descrivi sinteticamente le figure quando presenti;
 - non inventare contenuto non visibile;
 - usa il placeholder "[illeggibile]" per parti non leggibili;
@@ -35,6 +36,7 @@ st.set_page_config(page_title="OCR to Markdown", layout="wide", initial_sidebar_
 
 
 def reset_state() -> None:
+    clear_page_editor_state()
     st.session_state.pages = []
     st.session_state.results = []
     st.session_state.errors = {}
@@ -43,6 +45,12 @@ def reset_state() -> None:
     st.session_state.output_filename = None
     st.session_state.saved_path = None
     st.session_state.save_error = None
+
+
+def clear_page_editor_state() -> None:
+    for key in list(st.session_state.keys()):
+        if str(key).startswith("md_"):
+            del st.session_state[key]
 
 
 def initialize_state() -> None:
@@ -101,6 +109,7 @@ def save_results_automatically() -> None:
 
 
 def run_ocr_for_pages(prompt: str, model: str, base_url: str, timeout: int, retries: int) -> None:
+    clear_page_editor_state()
     st.session_state.results = []
     st.session_state.errors = {}
     progress = st.progress(0)
@@ -293,6 +302,7 @@ def main() -> None:
 
     if st.session_state.show_ocr_summary:
         show_ocr_summary_dialog()
+        st.session_state.show_ocr_summary = False
 
     render_page_comparison()
 
