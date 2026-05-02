@@ -1,6 +1,6 @@
 # OCR to Markdown
 
-**Versione:** `0.5`
+**Versione:** `1.0`
 
 Webapp Streamlit per trasformare PDF scansionati, PDF rumorosi e immagini in Markdown pulito usando **GLM-OCR** esposto tramite **Ollama locale**.
 
