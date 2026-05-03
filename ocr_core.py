@@ -338,6 +338,14 @@ def count_unreadable_placeholders(results: list[dict]) -> int:
     )
 
 
+def get_unreadable_pages(results: list[dict]) -> list[int]:
+    unreadable_pages = []
+    for result in results:
+        if re.search(r"\[illeggibile\]", result["markdown"], flags=re.IGNORECASE):
+            unreadable_pages.append(result["page_number"])
+    return unreadable_pages
+
+
 def build_ocr_summary(pages: list[PageImage], results: list[dict], errors: dict[int, str]) -> dict:
     processed_pages = [
         f"Pagina {result['page_number']}"
@@ -345,7 +353,7 @@ def build_ocr_summary(pages: list[PageImage], results: list[dict], errors: dict[
     ]
     error_items = [
         {
-            "page": f"{pages[index].source_name} - pagina {pages[index].page_number}",
+            "page_number": pages[index].page_number,
             "error": error,
         }
         for index, error in sorted(errors.items())
@@ -358,4 +366,5 @@ def build_ocr_summary(pages: list[PageImage], results: list[dict], errors: dict[
         "error_count": len(error_items),
         "errors": error_items,
         "unreadable_count": count_unreadable_placeholders(results),
+        "unreadable_pages": get_unreadable_pages(results),
     }

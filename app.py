@@ -183,20 +183,18 @@ def show_ocr_summary_dialog() -> None:
         st.info("Nessun riepilogo disponibile.")
         return
 
-    st.write(f"Pagine selezionate: **{summary['total_pages']}**")
-    st.write(f"Pagine elaborate correttamente: **{summary['processed_count']}**")
-    st.write(f"Errori: **{summary['error_count']}**")
-    st.write(f"Elementi `[illeggibile]`: **{summary['unreadable_count']}**")
-
-    if summary["processed_pages"]:
-        with st.expander("Pagine elaborate", expanded=True):
-            for page_label in summary["processed_pages"]:
-                st.write(f"- {page_label}")
-
     if summary["errors"]:
-        with st.expander("Errori", expanded=True):
-            for item in summary["errors"]:
-                st.error(f"{item['page']}: {item['error']}")
+        st.subheader("Pagine in errore")
+        for item in summary["errors"]:
+            st.error(f"Pagina {item['page_number']}: {item['error']}")
+    else:
+        st.info("Nessuna pagina in errore.")
+
+    if summary["unreadable_pages"]:
+        st.subheader("Pagine con parti non leggibili")
+        st.write(", ".join(str(page_number) for page_number in summary["unreadable_pages"]))
+    else:
+        st.info("Nessuna pagina contiene parti non leggibili.")
 
     if st.button("Chiudi", width="stretch"):
         st.session_state.show_ocr_summary = False
